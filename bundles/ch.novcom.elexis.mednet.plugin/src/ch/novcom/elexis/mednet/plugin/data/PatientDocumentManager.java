@@ -222,14 +222,16 @@ public class PatientDocumentManager {
 	 * Look for a result
 	 * @param labItem the corresponding labItem this result should be part of
 	 * @param value the value of the result
-	 * @param date the date of the result
+	 * @param samplingDate the date of the result
 	 * @return The result we found or null
 	 */
-	private LabResult getLabResult(LabItem labItem, String value, Date date){
+	private LabResult getLabResult(LabItem labItem, String value, Date samplingDate, Date transmissionDate){
 		Query<LabResult> qli = new Query<LabResult>(LabResult.class);
 		qli.add(LabResult.ITEM_ID, "=", labItem.getId());//$NON-NLS-1$
 		qli.and();
-		qli.add(LabResult.OBSERVATIONTIME, "=", PatientDocumentManager.LABRESULT_TIMESTAMP_FORMATTER.format(date));//$NON-NLS-1$
+		qli.add(LabResult.OBSERVATIONTIME, "=", PatientDocumentManager.LABRESULT_TIMESTAMP_FORMATTER.format(samplingDate));//$NON-NLS-1$
+		qli.and();
+		qli.add(LabResult.TRANSMISSIONTIME, "=", PatientDocumentManager.LABRESULT_TIMESTAMP_FORMATTER.format(transmissionDate));//$NON-NLS-1$
 		qli.and();
 		qli.add(LabResult.PATIENT_ID, "=", patient.getId());//$NON-NLS-1$
 		qli.and();
@@ -253,7 +255,7 @@ public class PatientDocumentManager {
 	 * @param category
 	 * @param orderId
 	 * @param file
-	 * @param documentDateTime
+	 * @param samplingDateTime
 	 * @param keyword
 	 * @throws IOException
 	 */
@@ -263,7 +265,8 @@ public class PatientDocumentManager {
 			Kontakt institution,
 			String orderId,
 			Path file,
-			Date documentDateTime,
+			Date samplingDateTime,
+			Date transmissionDateTime,
 			String keywords
 		) throws IOException{
 		String logPrefix = "addDocument() - ";//$NON-NLS-1$
@@ -303,13 +306,15 @@ public class PatientDocumentManager {
 		
 		//First of all define a title we will use for this result:
 		//Set a title to the document
-		SimpleDateFormat dateTimeFormatter = new SimpleDateFormat(MedNetMessages.PatientDocumentManager_LabResultTitleTransactionFormat);
+		SimpleDateFormat transmissionDateTimeFormatter = new SimpleDateFormat(MedNetMessages.PatientDocumentManager_LabResultTitleTransactionFormat);
+		SimpleDateFormat samplingDateTimeFormatter 	= new SimpleDateFormat(MedNetMessages.PatientDocumentManager_LabResultTitleSamplingFormat);
 		
 		String title = 
 				MessageFormat.format(
 						MedNetMessages.PatientDocumentManager_LabResultTitle,
 						orderId,
-						dateTimeFormatter.format(documentDateTime),
+						samplingDateTimeFormatter.format(samplingDateTime),
+						transmissionDateTimeFormatter.format(transmissionDateTime),
 						DocumentImporter.getBaseName(file),
 						DocumentImporter.getExtension(file)
 				);
@@ -322,20 +327,24 @@ public class PatientDocumentManager {
 		
 		//Since the labResult Object uses TimeTool,
 		//We will convert the documentDateTime into a TimeTool
-		TimeTool documentDate = new TimeTool();
-		documentDate.setTime(documentDateTime);
-		String documentTime = PatientDocumentManager.LABRESULT_TIME_FORMATTER.format(documentDateTime);
+		TimeTool samplingDate = new TimeTool();
+		samplingDate.setTime(samplingDateTime);
+		String samplingTime = PatientDocumentManager.LABRESULT_TIME_FORMATTER.format(samplingDateTime);
+		
+		TimeTool transmissionDate = new TimeTool();
+		transmissionDate.setTime(transmissionDateTime);
 		
 		boolean saved = false;
 		
 		//Check if a result already exists with this title, and this time
-		LabResult labResult = this.getLabResult(labItem, title, documentDateTime);
+		LabResult labResult = this.getLabResult(labItem, title, samplingDateTime,transmissionDateTime);
 		if (labResult == null) {
 			//If no results exists, create one
-			labResult = new LabResult(patient, documentDate, labItem, title, null);
+			labResult = new LabResult(patient, samplingDate, labItem, title, null);
 			labResult.set(FLD_ORGIN, orderId);
-			labResult.set(LabResult.TIME, documentTime);
-			labResult.setObservationTime(documentDate);
+			labResult.set(LabResult.TIME, samplingTime);
+			labResult.setObservationTime(samplingDate);
+			labResult.setTransmissionTime(transmissionDate);
 			labResult.setPathologicDescription(new PathologicDescription(Description.PATHO_IMPORT));
 			saved = true;
 		} else {
@@ -343,23 +352,22 @@ public class PatientDocumentManager {
 			//We should check if we should overwrite it
 			
 			//If the option overwrite results is set to true, we overwrite the result
-			//If the given document is newer than the one in the database
 			if (
 					overwriteResults
-				|| (labResult.getObservationTime().getTimeInMillis() < documentDate.getTimeInMillis())
 				) {
 				LOGGER.warn(logPrefix+
 						"An older version of this document will be overwritten:"
 								+ labItem.getKuerzel() + "-" 
 								+ labItem.getName() + " " 
 								+ labResult.getObservationTime().toDBString(true)+ " " 
-								+ documentDate.toDBString(true)+ " " 
+								+ samplingDate.toDBString(true)+ " " 
 								+ labResult.getResult()+ " " 
 								+ title+ " " 
 						);//$NON-NLS-1$
 				labResult.setResult(title);
-				labResult.set(LabResult.TIME, documentTime);
-				labResult.setObservationTime(documentDate);
+				labResult.set(LabResult.TIME, samplingTime);
+				labResult.setObservationTime(samplingDate);
+				labResult.setTransmissionTime(transmissionDate);
 				labResult.setPathologicDescription(new PathologicDescription(Description.PATHO_IMPORT));
 				saved = true;
 			} else {
@@ -370,7 +378,7 @@ public class PatientDocumentManager {
 							+ labItem.getKuerzel() + "-" 
 							+ labItem.getName() + " " 
 							+ labResult.getObservationTime().toDBString(true)+ " " 
-							+ documentDate.toDBString(true)+ " " 
+							+ samplingDate.toDBString(true)+ " " 
 							+ labResult.getResult()+ " " 
 							+ title+ " " 
 					);//$NON-NLS-1$
@@ -381,7 +389,7 @@ public class PatientDocumentManager {
 		//We can archive the document into Omnivore
 		if (saved) {
 			try {
-				String dateTimeDocumentString = documentDate.toString(TimeTool.DATE_GER);
+				String dateTimeDocumentString = samplingDate.toString(TimeTool.DATE_GER);
 				
 
 				//Construct the category were the documents will be stored:
