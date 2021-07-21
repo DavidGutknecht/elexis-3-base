@@ -264,7 +264,8 @@ public class DocumentImporter {
 			) {
 			
 			//Pick the most informations from the PDF Filename
-			String documentDateTime = "";
+			String samplingDateTime = "";
+			String transmissionDateTime = "";
 			String patientId = "";
 			String patientLastName = "";
 			String patientFirstName = "";
@@ -274,9 +275,10 @@ public class DocumentImporter {
 			Matcher filenameMatcher = documentFilenamePattern.matcher(getBaseName(pdfFile));
 			
 			if(filenameMatcher.matches()){
-				documentDateTime = filenameMatcher.group("samplingDateTime");
-				if(documentDateTime == null || documentDateTime.isEmpty()) {
-					documentDateTime = filenameMatcher.group("transactionDateTime");
+				samplingDateTime = filenameMatcher.group("samplingDateTime");
+				transmissionDateTime = filenameMatcher.group("transactionDateTime");
+				if(samplingDateTime == null || samplingDateTime.isEmpty()) {
+					samplingDateTime = transmissionDateTime;
 				}
 				patientId = filenameMatcher.group("PatientId");
 				patientLastName = filenameMatcher.group("PatientLastName");
@@ -299,17 +301,31 @@ public class DocumentImporter {
 				if (documentManager != null) {
 					//Save the PDF file into Omnivore
 					
-					Date documentDateTimeObj = new Date();
+					Date samplingDateTimeObj = new Date();
 					try{
-						documentDateTimeObj = DocumentImporter.documentDateTimeParser.parse(documentDateTime);
+						samplingDateTimeObj = DocumentImporter.documentDateTimeParser.parse(samplingDateTime);
 					}
 					catch(ParseException pe1){
 						//If we are not able to parse a DateTime, maybe it is only a Date
 						try {
-							documentDateTimeObj = DocumentImporter.documentDateParser.parse(documentDateTime);
+							samplingDateTimeObj = DocumentImporter.documentDateParser.parse(samplingDateTime);
 						}
 						catch(ParseException pe2) {
-							LOGGER.warn("process Unable to parse documentDateTime:"+documentDateTime, pe2);
+							LOGGER.warn("process Unable to parse samplingDateTime:"+samplingDateTime, pe2);
+						}
+					}
+					
+					Date transmissionDateTimeObj = new Date();
+					try{
+						transmissionDateTimeObj = DocumentImporter.documentDateTimeParser.parse(transmissionDateTime);
+					}
+					catch(ParseException pe1){
+						//If we are not able to parse a DateTime, maybe it is only a Date
+						try {
+							transmissionDateTimeObj = DocumentImporter.documentDateParser.parse(transmissionDateTime);
+						}
+						catch(ParseException pe2) {
+							LOGGER.warn("process Unable to parse transmissionDateTime:"+transmissionDateTime, pe2);
 						}
 					}
 					
@@ -320,7 +336,8 @@ public class DocumentImporter {
 							institution,
 							orderNr,
 							pdfFile,
-							documentDateTimeObj, 
+							samplingDateTimeObj,
+							transmissionDateTimeObj,
 							keywords
 							);
 					
